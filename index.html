@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script
+      src="https://code.jquery.com/jquery-3.5.1.js"
+      integrity="sha256-QWo7LDvxbWT2tbbQ97B53yJnYU3WhH/C8ycbRAkjPDc="
+      crossorigin="anonymous"
+    ></script>
+    <script src="./js/utils.js"></script>
+    <link
+      href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <title>Document</title>
+  </head>
+  <script>
+    $(document).ready(function () {
+      var sizeLimit = "1024";
+      var extLimit = "";
+      var fileCnt = 0;
+
+      $("#addFileBtn").bind("click", function () {
+        console.log("addFileBtn");
+        fileCnt = $("#attachFileDiv").find("input").length;
+        console.log("fileCnt :", fileCnt);
+        var item = new Object();
+        item.ROW_ID = fileCnt;
+        var newFileInput = document.createElement("input");
+        newFileInput.type = "file";
+        newFileInput.id = "upFile_" + item.ROW_ID;
+        newFileInput.name = "files";
+        newFileInput.multiple = "multiple";
+        newFileInput.style = "display:none;";
+
+        document.getElementById("attachFileDiv").appendChild(newFileInput);
+
+        var input = $("#" + newFileInput.id);
+        input.trigger("click");
+      });
+
+      //파일을 선택하여 [input type='file'] 에 파일이 입력되었을 때
+      $("#attachFileDiv").delegate(
+        "input[type=file]",
+        "change",
+        function (event) {
+
+          var tFile = event.target.files;
+          console.log(tFile.length);
+          
+          for (var i = 0; i < tFile.length; i++) {
+            var file = tFile[i];
+            var fileId = $(this).attr("id");
+            var item = new Object();
+            item.ATTC_FILE_SZ = 0;
+            item.ATTC_FILE_GRP_NO = "";
+            item.ATTC_FILE_NO = "";
+
+            if (!gfn_checkUploadFile(file, sizeLimit, extLimit)) {
+              return false;
+            }
+
+            var fileName = tFile[i].name;
+            var fileSize = tFile[i].size;
+
+            // 선택 파일명 그리드에 출력 시킴
+            item.ATTC_FILE_NM = fileName;
+            item.ATTC_FILE_SZ = fileSize;
+            var beforeFileList = $('#fileList').html() || '';
+            console.log('beforeFileList :', beforeFileList);
+            var fileNameDiv = '<div>' + item.ATTC_FILE_NM + '</div>';
+            var fileInfo = beforeFileList == '' ? fileNameDiv : beforeFileList + fileNameDiv;
+            $('#fileList').html(fileInfo);
+          }
+        }
+      );
+
+      $("#saveFileBtn").bind("click", function () {
+        console.log("saveFileBtn");
+        // fileUpload Service 호출
+        var svcUrl = "cj.npd.common.service.CommonService.uploadFile";
+        // 파일 크기 , 파일 유형을 구분 하기 위해서.
+        var bizType = "npd";
+        // 수정되는 파일인 경우 해당 GRP NO를 구해야돼기 때문에.
+        var attchNo = '99';
+        // ds_upload , ds_uploadGroup dataSet 생성.
+        var atomicDs = gfn_createUploadDataset(bizType, attchNo);
+
+        var validationData = [];
+
+        // if (!dsUpload) return false;
+
+        // atomicDs.uploadCount = fileAttachGrid.getRowCount();
+        // atomicDs.ds_upload = dsUpload;
+        atomicDs = null;
+
+        var form = document.getElementById("frmAttch");
+        var tranCallBack = null;
+        gfn_atomicUploadTran(
+          "uploadFile",
+          svcUrl,
+          form,
+          atomicDs,
+          tranCallBack,
+          true
+        );
+      });
+    });
+
+    function gfn_atomicUploadTran(
+      svcId,
+      svcUrl,
+      objForm,
+      inDs,
+      tranCallback,
+      pShowLoading
+    ) {
+      var callUrl = "http://localhost:8080/api/multi";
+      gfn_uploadTran(svcId, callUrl, objForm, inDs, tranCallback, pShowLoading);
+    }
+
+    function gfn_uploadTran(
+      svcId,
+      callUrl,
+      objForm,
+      inDs,
+      tranCallback,
+      pShowLoading
+    ) {
+      var uploadJson = [];
+
+      // 업무별 사용자 json 데이터
+      // uploadJson = inDs;
+      var formData = new FormData(objForm);
+      formData.method = "POST";
+      formData.name = "files";
+      formData.enctype = "multipart/form-data";
+
+      // formData.append("inputData", JSON.stringify(uploadJson));
+
+      // APPEND FILE TO POST DATA
+      //formData.append('upFiles', files);
+      var uploadData = {
+        url: callUrl,
+        type: "POST",
+        headers: { AjaxType: "FOUpload" }, //FrameOne에서 정한 공통 JSON 형식
+        data: formData, //JSON.stringify(uploadJson),
+        async: false,
+        cache: false,
+        contentType: false,
+        processData: false,
+        beforeSend: function (jqXHR, settings) {
+          // openLoadingImage({ pLoad: pShowLoading }); //로딩이미지 노출
+        },
+        success: function (data, textStatus, jqXHR) {
+          console.log('success!!!');
+          //window.console.log("Success!! [" + textStatus + "] \r\n - data : " + data + " \r\n - jqXHR.responseText : " + jqXHR.responseText);
+          //tranCallback(svcId, data, ERR_CD_SUCCESS); //  msgTp, msgCd, msgText
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          window.console.log(
+            "에러발생!! [" + textStatus + "] / " + errorThrown
+          );
+        },
+        complete: function (jqXHR, textStatus) {
+          console.log('completed!!!');
+          // closeLoadingImage(); //로딩이미지 닫기
+
+          //서버에서 에러 발생시 HtmlErrorHandlingFilter에서 SVC_ERR_DETAIL에 에러메세지를 담는데,
+          //이 에러메세지에 JSON parsing이 불가능한 문자가 들어 있을 경우 JSON.parse()에서 에러가 발생하고
+          //200 에러와 함께 이후 콜백이 수행되지 않는 문제 때문에 try ~ catch로 감싸주고, catch절에서 빈 메세지를 셋팅함.
+          //window.console.log("--> textStatus : " + textStatus + " response : <<< " + jqXHR.responseText + " >>>");
+          // var returnData;
+          // try {
+          //   returnData = JSON.parse(jqXHR.responseText);
+          // } catch (e) {
+          //   returnData = {
+          //     ERROR_CODE: -1,
+          //     ERROR_MESSAGE_CODE: "-1",
+          //     ERROR_MESSAGE_TEXT: "",
+          //   };
+          // }
+
+          // //ajax 응답객체로부터 수행결과코드 및 출력해 주어야할 메세지를 선별하여 리턴.
+          // var retMsg = getReturnMsg(returnData);
+          // //선별된 메세지를 타입에 맞추어 출력(alert or footer출력 등)
+          // outMessage(retMsg);
+
+          // //세션 만료시 : 권한없음 에러코드일 경우 에러페이지로 페이지 이동 ERR_CD_NO_AUTH : -10
+          // if (retMsg.errCd == ERR_CD_NO_AUTH) {
+          //   dc("transaction : " + ERR_CD_NO_AUTH);
+          //   goSessionExpiredPage({ alert: false }); //outMessage()에서 alert처리를 하므로 false로 셋팅
+          // }
+
+          //사용자정의 콜백 실행
+          // if ($.isFunction(tranCallback)) {
+          //   //사용자정의 에러처리를 해야 할 수도 있기 때문에 수정함
+          //   tranCallback(
+          //     svcId,
+          //     returnData,
+          //     retMsg.errCd,
+          //     retMsg.msgTp,
+          //     retMsg.msgCd,
+          //     retMsg.msgText
+          //   );
+          // }
+        },
+      };
+
+      $.ajax(uploadData);
+    }
+
+    /*********************************************************
+     * FUNCTION NAME    : gfn_createUploadDataset
+     * FUNCTION DESC	: 파일 업로드 데이터셋 생성
+     * @param
+     *			bizType  : 파일 업로드 업무 구분 (frameone applicationProperty.xml 참조)
+     *			attchNo  : 파일 첨부 그룹 ID
+     *			workFgCd : 사용자 정의 첨부 그룹 구분 코드
+     *          keyVal   : 파일 첨부 그룹 내용
+     *          draftNo  : 품의서번호
+     *          fileFgCd : 첨부파일구분코드
+     * @return
+     *			파일 업로드 데이터셋
+     *********************************************************/
+    function gfn_createUploadDataset(
+      bizType,
+      attchNo,
+      workFgCd,
+      keyVal,
+      draftNo,
+      fileFgCd
+    ) {
+      var dsUploadInfo = {};
+      /******************************************************************
+       * file upload 필수 입력 데이터 항목
+       ******************************************************************/
+      // file upload 필수 dataset json data
+      // 반드시 Dataset json item 명을 ds_upload, ds_uploadGroup로 지정해야 함.
+      dsUploadInfo["ds_uploadGroup"] = [];
+      dsUploadInfo["ds_upload"] = [];
+
+      dsUploadInfo.ds_uploadGroup = g_getDataset(
+        {
+          BIZ_TYPE: bizType,
+          ATTC_FILE_GRP_NO: attchNo,
+        },
+        gfn_isNull(attchNo) ? "I" : "U"
+      );
+
+      return dsUploadInfo;
+    }
+
+    /*********************************************************
+     * FUNCTION NAME    : gfn_checkUploadFile
+     * FUNCTION DESC	: 파일 제한 조건(사이즈, 파일 종류) 검증
+     * @param
+     *			file  : 선택된 파일
+     *			sizeLimit  : 제한 파일 사이즈
+     *			extLimit : 제한 확장자 목록 (;구분자로 여러 파일 지정 - 서버 설정)
+     * @return
+     *			true/false
+     *********************************************************/
+    function gfn_checkUploadFile(file, sizeLimit, extLimit) {
+      // 파일 용량 제한 확인.
+      var limit = gfn_toNumber(gfn_decode(sizeLimit, null, -1, sizeLimit));
+      if (limit != -1) {
+        if (file.size > limit * 1024) {
+          showModalMessage("MSG_COM_ERR_006"); //업로드 가능한 용량을 초과하였습니다.
+          return false;
+        }
+      }
+
+      var fileName = file.name;
+      // 파일 확장자 체크.
+      // 파일명에 . 이 들어갔을 경우 업로드 가능해야 한다.
+      var ext = gfn_subString(fileName, fileName.lastIndexOf(".") + 1);
+      var arrExt = gfn_split(extLimit, "|");
+      if (gfn_length(arrExt) > 0) {
+        var extValid = false;
+        for (var i = 0; i < gfn_length(arrExt); i++) {
+          if (arrExt[i] == gfn_toLower(ext)) {
+            extValid = true;
+            break;
+          }
+        }
+        if (!extValid) {
+          showModalMessage("MSG_COM_ERR_005"); // 업로드 가능한 파일이 아닙니다.
+          return false;
+        }
+      }
+
+      return true;
+    }
+  </script>
+
+  <body class="flex flex-col items-center">
+    <head>
+      <div
+        class="text-2xl bg-gray-200 w-full text-center font-bold h-12 flex justify-center items-center"
+      >
+        File Down Page
+      </div>
+    </head>
+    <div class="btns w-96 p-2  bg-gray-100 rounded-md">
+      <div class="flex justify-end w-full mb-2">
+        <button
+          id="addFileBtn"
+          class="border-black border mr-2 px-2 rounded-md bg-blue-300 text-lg font-bold"
+        >
+          Add File
+        </button>
+        <button
+          id="saveFileBtn"
+          class="border-black border mr-2 px-2 rounded-md bg-green-300 text-lg font-bold"
+        >
+          Save File
+        </button>
+      </div>
+      <div id="fileList" class="bg-gray-200 h-64 rounded-md"></div>
+    </div>
+    <form
+      name="frmAttch"
+      id="frmAttch"
+      method="post"
+      action=""
+      enctype="multipart/form-data"
+    >
+      <input type="hidden" name="ATTCH_GRP_NO" id="ATTCH_GRP_NO" value="99" />
+      <!-- 첨부파일번호 -->
+      <div id="attachFileDiv" style="display: none"></div>
+    </form>
+  </body>
+</html>
